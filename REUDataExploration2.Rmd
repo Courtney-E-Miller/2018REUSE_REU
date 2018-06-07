@@ -1,0 +1,197 @@
+---
+title: "REUDataExploration2"
+author: "Courtney Miller"
+date: "6/6/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(Lock5Data)
+library(Lock5withR)
+library(ggplot2)
+library(readr)
+library(dplyr)
+data <- read_csv("~/Desktop/CMU REU '18/REUDataExploration/UnCorrectedDataHadoop.csv")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Breaking up the Data
+- The data is initially imported as one large data set, to reduce the number of SQL queeries necessary 
+-First I will break the data set into smaller tables based on the author id
+
+```{r, echo=FALSE}
+authors <- c(`1442272`, `840830`, `535`,`348705`,`790256`)
+
+splittingByAuthor <- split(data, data$author_id)
+author1 <- splittingByAuthor$`1442272`
+author2 <- splittingByAuthor$`840830`
+author3 <- splittingByAuthor$`535`
+author4 <- splittingByAuthor$`348705`
+author5 <- splittingByAuthor$`790256`
+View(author5)
+```
+
+### Adjusting for Time Zone
+- Now I will take the hour of work (HoW) for each person's commits and adjsut then using the mod equation based (provided by Chris) on their time zone
+- The mod equation is:  **localHoW** = (**HoW** + as.integer(*offset*/100) %% 168)
+- Note, even if the author has an offset of 0, we still create a localHoW variable for the sake of consistency in later code thats just equal to HoW
+```{r, echo= FALSE}
+
+for (authorid in authors) {
+  mutate(splittingByAuthor[[authorid]],localHoW = (HoW + as.integer(   **** put in the author's offset here *** /100)) %% 168)
+}
+#Author 1, offset = 900
+author1 <- mutate(author1, localHoW = (HoW + as.integer(900/100)) %% 168)
+#Author 2, offset = 0 (so localHoW = HoW)
+author2 <- mutate(author2, localHoW = HoW)
+#Author 3, offset = -467
+author3 <- mutate(author3, localHoW = (HoW + as.integer(-467/100)) %% 168)
+#Author 4, offset = -226
+author4 <- mutate(author4, localHoW = (HoW + as.integer(-226/100)) %% 168)
+#Author 5, offset = -735
+author5 <- mutate(author5, localHoW = (HoW + as.integer(-735/100)) %% 168)
+```
+
+
+### Creating HoD and o.h Variables
+- For the sake of exploration, we will create an HoD variable for the local time zone.
+- We will also create the frequency count variable which we will use to aggregate frequiencies in later steps.
+
+```{r, echo= FALSE}
+#Author 1 (local):
+author1 <- author1 %>% mutate(localO.h = ifelse(localHoW %in% 129:137, "1", ifelse(localHoW %in% 105:113, "1", ifelse(localHoW %in% 81:89, "1", ifelse(localHoW %in% 57:65, "1", ifelse(localHoW %in% 33:41, "1", "0")))))) %>% mutate(localHoD = ifelse(localHoW %in% 0:23, (localHoW %% 24) + 24, ifelse(localHoW %in% 144:167, local(HoW %% 24) + 24, localHoW %% 24))) 
+#Author 2 (local):
+author2 <- author2 %>% mutate(localO.h = ifelse(localHoW %in% 129:137, "1", ifelse(localHoW %in% 105:113, "1", ifelse(localHoW %in% 81:89, "1", ifelse(localHoW %in% 57:65, "1", ifelse(localHoW %in% 33:41, "1", "0")))))) %>% mutate(localHoD = ifelse(localHoW %in% 0:23, (localHoW %% 24) + 24, ifelse(localHoW %in% 144:167, local(HoW %% 24) + 24, localHoW %% 24))) 
+#Author 3 (local):
+author3 <- author3 %>% mutate(localO.h = ifelse(localHoW %in% 129:137, "1", ifelse(localHoW %in% 105:113, "1", ifelse(localHoW %in% 81:89, "1", ifelse(localHoW %in% 57:65, "1", ifelse(localHoW %in% 33:41, "1", "0")))))) %>% mutate(localHoD = ifelse(localHoW %in% 0:23, (localHoW %% 24) + 24, ifelse(localHoW %in% 144:167, local(HoW %% 24) + 24, localHoW %% 24))) 
+#Author 4 (local):
+author4 <- author4 %>% mutate(localO.h = ifelse(localHoW %in% 129:137, "1", ifelse(localHoW %in% 105:113, "1", ifelse(localHoW %in% 81:89, "1", ifelse(localHoW %in% 57:65, "1", ifelse(localHoW %in% 33:41, "1", "0")))))) %>% mutate(localHoD = ifelse(localHoW %in% 0:23, (localHoW %% 24) + 24, ifelse(localHoW %in% 144:167, local(HoW %% 24) + 24, localHoW %% 24))) 
+#Author 5 (local):
+author5 <- author5 %>% mutate(localO.h = ifelse(localHoW %in% 129:137, "1", ifelse(localHoW %in% 105:113, "1", ifelse(localHoW %in% 81:89, "1", ifelse(localHoW %in% 57:65, "1", ifelse(localHoW %in% 33:41, "1", "0")))))) %>% mutate(localHoD = ifelse(localHoW %in% 0:23, (localHoW %% 24) + 24, ifelse(localHoW %in% 144:167, local(HoW %% 24) + 24, localHoW %% 24))) 
+```
+
+#Apache Hadoop Developer Working Hour Patterns
+
+**Heat Map Description:**
+
+- The y-axis in these visualizations represent the hour of day (HoD) when the commit was made. 0-23 are the aggregate hours of the work week, and 24-47 are the aggregate hours for the weekend (i.e. the cell at (2013, 12) represents the total number of commits made in 2013 at 12:00 on a work day).  The x-axis represents the year the commit was made in.  This design choice was suggested by Chris (and I believe originated from Christian) because we want to examine their overall work pattern (do they work during office hours or non-office hours?), and this allows us to see the difference while keeping the scale manageable (the alternative would of been to have all the hours of the week 0-168 and this seemed much less digestible as a visualization).
+
+**Line Graph Description:**
+
+- For these visualizations, the focus is again on the top 5 contributors, except now the visualization will be looking at the number of commits during office hours (9-5 on weekdays) vs non-office hours (non-9-5/weekends).  I chose to visualize this plot with a line graph, where the x-axis is the year and the y-axis is the number of commits.  Both office and non-office hours are plotted on the same graph but in different colors, to help streamline the visualization.
+
+- First I created a new office hour variable (o.h), which will be used for grouping in line graph, 1 = office hours, 0 = non-office hours.  I considered office hours to be from 09:00 - 17:00.  However it should be noted potential time zone issues have not yet been addressed.  
+
+## Contributor 1: 
+
+```{r, echo=FALSE}
+#Funtion takes in an author and creates line line graph plotting office hours vs. non-office hours and longitudinal Heat Map of Working Hours for the author 
+create_both_graphs <- function(authori) {
+     # Aggregates frequencies and groups by o.h and year
+    ai <- authori %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+    
+    # Changes o.h from continuous to discrete column 
+    ai$localO.h <- as.factor(ai$localO.h)
+    
+    # Creates line graph plotting office hours vs. non-office hours
+    plot(ggplot(ai, aes(x = year, y = freq)) + geom_line(aes(colour= localO.h)) + labs(title = "Office Hour vs. Non-Office Hour Commits\n", x = "Year", y = "Number of Commits", color = "Time of Commit") +
+      scale_color_manual(labels = c("During Non-Office Hours", "During Office Hours"), values = c("blue", "red")))
+    
+    # Aggregates frequencies and groups by HoD
+    aib <- authori %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, localHoD, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+    
+    # Creates longitudinal Heat Map of Working Hours:
+    plot(ggplot(aib, aes(year, localHoD)) + geom_tile(aes(fill = freq), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + scale_y_continuous(breaks=seq(0, 168, 2)))
+}
+```
+```{r}
+create_both_graphs(author1)
+create_both_graphs(author2)
+```
+
+
+
+## Contributor 2:
+```{r, echo=FALSE}
+# Aggregates frequencies and groups by o.h and year
+a2 <- author2 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Changes o.h from continuous to discrete column 
+a2$localO.h <- as.factor(a2$localO.h)
+
+# Creates line graph plotting office hours vs. non-office hours
+ggplot(a2, aes(x = year, y = freq)) + geom_line(aes(colour= localO.h)) + labs(title = "Office Hour vs. Non-Office Hour Commits\n", x = "Year", y = "Number of Commits", color = "Time of Commit") +
+  scale_color_manual(labels = c("During Non-Office Hours", "During Office Hours"), values = c("blue", "red"))
+
+# Aggregates frequencies and groups by HoD
+a2b <- author2 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, localHoD, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Creates longitudinal Heat Map of Working Hours:
+ggplot(a2b, aes(year, localHoD)) + geom_tile(aes(fill = freq), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + scale_y_continuous(breaks=seq(0, 168, 2))
+```
+
+## Contributor 3:
+```{r, echo=FALSE}
+# Aggregates frequencies and groups by o.h and year
+a3 <- author3 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Changes o.h from continuous to discrete column 
+a3$localO.h <- as.factor(a3$localO.h)
+
+# Creates line graph plotting office hours vs. non-office hours
+ggplot(a3, aes(x = year, y = freq)) + geom_line(aes(colour= localO.h)) + labs(title = "Office Hour vs. Non-Office Hour Commits\n", x = "Year", y = "Number of Commits", color = "Time of Commit") +
+  scale_color_manual(labels = c("During Non-Office Hours", "During Office Hours"), values = c("blue", "red"))
+
+# Aggregates frequencies and groups by HoD
+a3b <- author3 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, localHoD, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Creates longitudinal Heat Map of Working Hours:
+ggplot(a3b, aes(year, localHoD)) + geom_tile(aes(fill = freq), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + scale_y_continuous(breaks=seq(0, 168, 2))
+```
+
+## Contributor 4:
+```{r, echo=FALSE}
+# Aggregates frequencies and groups by o.h and year
+a4 <- author4 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Changes o.h from continuous to discrete column 
+a4$localO.h <- as.factor(a4$localO.h)
+
+# Creates line graph plotting office hours vs. non-office hours
+ggplot(a4, aes(x = year, y = freq)) + geom_line(aes(colour= localO.h)) + labs(title = "Office Hour vs. Non-Office Hour Commits\n", x = "Year", y = "Number of Commits", color = "Time of Commit") +
+  scale_color_manual(labels = c("During Non-Office Hours", "During Office Hours"), values = c("blue", "red"))
+
+# Aggregates frequencies and groups by HoD
+a4b <- author4 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, localHoD, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Creates longitudinal Heat Map of Working Hours:
+ggplot(a4b, aes(year, localHoD)) + geom_tile(aes(fill = freq), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + scale_y_continuous(breaks=seq(0, 168, 2))
+```
+
+## Contributor 5:
+```{r, echo=FALSE}
+# Aggregates frequencies and groups by o.h and year
+a5 <- author5 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Changes o.h from continuous to discrete column 
+a5$localO.h <- as.factor(a5$localO.h)
+
+# Creates line graph plotting office hours vs. non-office hours
+ggplot(a5, aes(x = year, y = freq)) + geom_line(aes(colour= localO.h)) + labs(title = "Office Hour vs. Non-Office Hour Commits\n", x = "Year", y = "Number of Commits", color = "Time of Commit") +
+  scale_color_manual(labels = c("During Non-Office Hours", "During Office Hours"), values = c("blue", "red"))
+
+# Aggregates frequencies and groups by HoD
+a5b <- author5 %>% mutate(freqYr = frequency(year)) %>% group_by(freqYr, localHoD, year, localO.h) %>% summarise(freq = sum(freqYr)) %>% group_by(localO.h)
+
+# Creates longitudinal Heat Map of Working Hours:
+ggplot(a5b, aes(year, localHoD)) + geom_tile(aes(fill = freq), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + scale_y_continuous(breaks=seq(0, 168, 2))
+```
+
+```{r}
+
+a1c <- author1 %>% mutate(freqO.hCommits = frequency(localO.h)) %>% mutate(freqNonO.hCommits = frequency(localO.h)) 
+a1c <- a1c %>% group_by(localO.h, )
+
+View(a1c)
+
+```
